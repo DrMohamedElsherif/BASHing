@@ -10,6 +10,7 @@ Year: 2025
 Overview
 --------
 This project consists of two Bash scripts developed for automating the processing and presentation of image files.
+
 Script Descriptions
 -------------------
 
