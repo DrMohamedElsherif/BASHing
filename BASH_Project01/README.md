@@ -2,7 +2,9 @@ README.txt
 ==========
 
 Project Title: Image Processing and HTML Presentation Scripts (Project01)
+
 Author: Mohamed A. Elsherif (6378374)
+
 Year: 2025
 
 Overview
