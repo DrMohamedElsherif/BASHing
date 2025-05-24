@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Process a single PDF file and extract visa data into CSV
+# Usage: ./process_single_pdf.sh input.pdf
+
+set -e
+
+# === Setup ===
+PROJECT_DIR="$(cd "$(dirname "$0")"; pwd)"
+OUTPUT_DIR="$PROJECT_DIR/output"
+TEMP_DIR="$PROJECT_DIR/temp"
+
+mkdir -p "$OUTPUT_DIR" "$TEMP_DIR"
+
+PDF_FILE="$1"
+if [[ ! -f "$PDF_FILE" ]]; then
+  echo "❌ Error: File '$PDF_FILE' does not exist."
+  exit 1
+fi
+
+BASENAME=$(basename "$PDF_FILE" .pdf)
+TEMP_TEXT="$TEMP_DIR/${BASENAME}.txt"
+OUTPUT_CSV="$OUTPUT_DIR/${BASENAME}.csv"
+
+echo "🔍 Processing single file: $BASENAME.pdf"
+
+# Use layout mode to preserve table structure
+pdftotext -layout "$PDF_FILE" "$TEMP_TEXT"
+
+# Write CSV header
+echo "Foreign State;Immediate Relatives;Special Immigrants;Family Preference;Employment Preference;Immigrants;Total" > "$OUTPUT_CSV"
+
+# Extract valid data rows
+awk '
+  /^[A-Z]/ && NF >= 7 {
+    if ($0 ~ /^(Africa|Asia|Europe|North America|South America|Oceania|Region Total|Worldwide|Foreign State|Table III|^\*|Includes|Grand Total)/) next;
+    if (match($0, /^[[:space:]]/)) next;
+
+    country = $1;
+    for (i = 2; i <= NF - 6; i++) {
+      country = country " " $i;
+    }
+
+    for (i = NF - 5; i <= NF; i++) {
+      gsub(",", "", $i);
+    }
+
+    printf "%s;%s;%s;%s;%s;%s;%s\n", country, $(NF-5), $(NF-4), $(NF-3), $(NF-2), $(NF-1), $NF;
+  }
+' "$TEMP_TEXT" | sort >> "$OUTPUT_CSV"
+
+ROW_COUNT=$(($(wc -l < "$OUTPUT_CSV") - 1))
+echo "📊 Rows written (excluding header): $ROW_COUNT"
+echo "✅ CSV saved: $OUTPUT_CSV"
+
+rm -f "$TEMP_TEXT"

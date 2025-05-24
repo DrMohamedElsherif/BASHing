@@ -1,0 +1,88 @@
+#!/bin/bash
+
+# Evaluation Script
+# - Downloads visa PDF data (2021–2023)
+# - Processes each with process_single_pdf.sh
+# - Extracts summary for a given country across years
+# - Outputs to console and CSV in chronological order
+
+set -e
+
+# === Project Directories ===
+PROJECT_DIR="$(cd "$(dirname "$0")"; pwd)"
+PDF_DIR="$PROJECT_DIR/pdfs"
+OUTPUT_DIR="$PROJECT_DIR/output"
+
+# === Parse Country Argument ===
+TARGET_COUNTRY="${1:-Germany}"
+
+# Normalize filename
+SAFE_NAME=$(echo "$TARGET_COUNTRY" | tr ' ' '_' | tr -cd '[:alnum:]_')
+REPORT_FILE="$OUTPUT_DIR/${SAFE_NAME}_VisaReport.csv"
+
+TEMP_FILE=$(mktemp)
+
+mkdir -p "$PDF_DIR" "$OUTPUT_DIR"
+
+# === Download PDFs if not already present ===
+echo "📥 Checking for the PDFs..."
+
+PDF_URLS=(
+  "https://travel.state.gov/content/dam/visas/Statistics/AnnualReports/FY2021AnnualReport/FY21_TableIII.pdf"
+  "https://travel.state.gov/content/dam/visas/Statistics/AnnualReports/FY2022AnnualReport/FY22_TableIII.pdf"
+  "https://travel.state.gov/content/dam/visas/Statistics/AnnualReports/FY2023AnnualReport/FY2023_AR_TableIII.pdf"
+)
+
+for URL in "${PDF_URLS[@]}"; do
+  FILE_NAME=$(basename "$URL")
+  FILE_PATH="$PDF_DIR/$FILE_NAME"
+
+  if [[ -f "$FILE_PATH" ]]; then
+    echo "✅ $FILE_NAME already exists. Skipping download."
+  else
+    echo "⬇️  Downloading $FILE_NAME..."
+    wget -q -O "$FILE_PATH" "$URL"
+    echo "✅ Downloaded $FILE_NAME"
+  fi
+done
+
+echo ""
+
+# === Process Each PDF ===
+for PDF_FILE in "$PDF_DIR"/*.pdf; do
+  ./process_single_pdf.sh "$PDF_FILE"
+done
+
+# === Extract and store data lines ===
+echo ""
+echo "🧾 Extracting data for: $TARGET_COUNTRY"
+HEADER="Year;Country;Immediate Relatives;Special Immigrants;Family Preference;Employment Preference;Immigrants;Total"
+echo "$HEADER" > "$REPORT_FILE"
+
+for CSV in "$OUTPUT_DIR"/*.csv; do
+  FILENAME=$(basename "$CSV")
+  RAW_YEAR=$(echo "$FILENAME" | grep -oE 'FY[0-9]{2,4}' | sed 's/FY//')
+  if [[ ${#RAW_YEAR} -eq 2 ]]; then
+    YEAR="20$RAW_YEAR"
+  else
+    YEAR="$RAW_YEAR"
+  fi
+
+  MATCH=$(grep -i "^$TARGET_COUNTRY;" "$CSV" || true)
+  if [[ -n "$MATCH" ]]; then
+    echo "$YEAR;$MATCH" >> "$TEMP_FILE"
+  fi
+done
+
+# === Sort and output ===
+sort -n "$TEMP_FILE" >> "$REPORT_FILE"
+
+# === Display generated report content ===
+echo ""
+echo "📄 Report saved to: $REPORT_FILE"
+echo ""
+echo "📊 Report contents preview:"
+cat "$REPORT_FILE"
+
+# === Clean up ===
+rm -f "$TEMP_FILE"
